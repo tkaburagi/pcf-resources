@@ -1,0 +1,336 @@
+---
+name: prometheus
+director_uuid: ff3f3610-b645-45ed-8fbf-57adb2a0a92b
+releases:
+- name: prometheus
+  version: 13.0.0
+- name: routing
+  version: latest
+- name: prometheus-pcf-alert
+  version: latest
+###
+stemcells:
+- alias: trusty
+  os: ubuntu-trusty
+  version: latest
+###
+instance_groups:
+- name: alertmanager
+  instances: 1
+  vm_type: small.disk
+  stemcell: trusty
+  persistent_disk_type: '5120'
+  azs:
+  - env1
+  networks:
+  - name: VMNetwork
+  jobs:
+  - name: alertmanager
+    release: prometheus
+    properties:
+      alertmanager:
+        receivers:
+        - name: smtp-receiver
+          email_configs:
+          - to: testmail@kikori.going.com
+            from: prometheus@kikori.going.com
+            smarthost: 10.100.16.63:25
+            auth_username: testmail
+            auth_password: testP@ss
+            send_resolved: true
+            require_tls: false
+        route:
+          receiver: smtp-receiver
+#
+- name: grafana
+  instances: 1
+  vm_type: micro
+  stemcell: trusty
+  azs:
+  - env1
+  networks:
+  - name: VMNetwork
+  jobs:
+  - name: grafana
+    release: prometheus
+  - name: bosh_dashboards
+    release: prometheus
+  - name: cloudfoundry_dashboards
+    release: prometheus
+  - name: system_dashboards
+    release: prometheus
+  properties:
+    grafana:
+      dashboards:
+        json:
+          enabled: true
+      prometheus:
+        dashboard_files:
+        - "/var/vcap/packages/bosh_dashboards/bosh_deployments.json"
+#
+- name: nginx
+  instances: 1
+  vm_type: small.disk
+  stemcell: trusty
+  persistent_disk_type: '1024'
+  azs:
+  - env1
+  networks:
+  - name: VMNetwork
+  jobs:
+  - name: nginx
+    release: prometheus
+  - name: route_registrar
+    release: routing
+    properties:
+      route_registrar:
+        routes:
+        - name: grafana
+          port: 3000
+          registration_interval: 20s
+          tags:
+            component: grafana
+          uris:
+          - grafana.run.haas-87.pez.pivotal.io
+        - name: prometheus
+          port: 9090
+          registration_interval: 20s
+          tags:
+            component: prometheus
+          uris:
+          - prometheus.run.haas-87.pez.pivotal.io
+        - name: alertmanager
+          port: 9093
+          registration_interval: 20s
+          tags:
+            component: alertmanager
+          uris:
+          - alertmanager.run.haas-87.pez.pivotal.io
+      nats:
+        user: nats
+        password: kv-ifRMCLTEJGOmVf-dhVUNgrPpCKM6_
+        port: 4222
+        machines:
+        - 10.193.156.37
+- name: prometheus
+  instances: 1
+  vm_type: medium.disk
+  stemcell: trusty
+  persistent_disk_type: '10240'
+  azs:
+  - env1
+  networks:
+  - name: VMNetwork
+  jobs:
+  - name: blackbox_exporter
+    release: prometheus
+    properties:
+      blackbox_exporter:
+        config:
+          modules:
+            http_2xx:
+              prober: http
+              timeout: 5s
+  - name: collectd_exporter
+    release: prometheus
+  - name: consul_exporter
+    release: prometheus
+  - name: github_exporter
+    release: prometheus
+    properties:
+      github_exporter:
+        github:
+          repos: cloudfoundry-community/prometheus-boshrelease
+  - name: graphite_exporter
+    release: prometheus
+  - name: haproxy_exporter
+    release: prometheus
+  - name: nats_exporter
+    release: prometheus
+  - name: prometheus
+    release: prometheus
+    properties:
+      prometheus:
+        rule_files:
+        - /var/vcap/jobs/bosh_alerts/bosh_jobs.alerts
+        - /var/vcap/jobs/bosh_alerts/bosh_processes.alerts
+        - /var/vcap/jobs/bosh_alerts/bosh_system.alerts
+        - /var/vcap/jobs/bosh_alerts/prometheus_bosh_exporter.alerts
+        - /var/vcap/jobs/cloudfoundry_alerts/cf_routes.alerts
+        - /var/vcap/jobs/cloudfoundry_alerts/diego.alerts
+        - /var/vcap/jobs/cloudfoundry_alerts/prometheus_cf_exporter.alerts
+        - /var/vcap/jobs/cloudfoundry_alerts/prometheus_firehose_exporter.alerts
+        - /var/vcap/jobs/p_rabbitmq_alerts/p_rabbitmq.alerts
+        - /var/vcap/jobs/p_redis_alerts/p_redis.alerts
+        - /var/vcap/jobs/p_redis_alerts/p_redis_service_broker.alerts
+        - /var/vcap/jobs/probe_alerts/probe.alerts
+        - /var/vcap/jobs/prometheus_alerts/prometheus.alerts
+        scrape_configs:
+        - job_name: blackbox
+          metrics_path: "/probe"
+          params:
+            module:
+            - http_2xx
+          relabel_configs:
+          - regex: "(.*)(:80)?"
+            replacement: "${1}"
+            source_labels:
+            - __address__
+            target_label: __param_target
+          - regex: "(.*)"
+            replacement: "${1}"
+            source_labels:
+            - __param_target
+            target_label: instance
+          - regex: ".*"
+            replacement: localhost:9115
+            source_labels: []
+            target_label: __address__
+          static_configs:
+          - targets:
+            - prometheus.io
+        - job_name: cf
+          static_configs:
+          - targets:
+            - localhost:9193
+        - job_name: bosh
+          scrape_interval: 5m
+          scrape_timeout: 1m
+          static_configs:
+          - targets:
+            - localhost:9190
+        - job_name: collectd
+          static_configs:
+          - targets:
+            - localhost:9103
+        - job_name: consul
+          static_configs:
+          - targets:
+            - localhost:9107
+        - job_name: firehose
+          static_configs:
+          - targets:
+            - localhost:9186
+        - job_name: github
+          static_configs:
+          - targets:
+            - localhost:9171
+        - job_name: graphite
+          static_configs:
+          - targets:
+            - localhost:9108
+        - job_name: haproxy
+          static_configs:
+          - targets:
+            - localhost:9101
+        - job_name: kube_state_metrics_exporter
+          static_configs:
+          - targets:
+            - localhost:9188
+        - job_name: mysql
+          static_configs:
+          - targets:
+            - localhost:9104
+        - job_name: nats
+          static_configs:
+          - targets:
+            - localhost:9118
+        - job_name: node
+          static_configs:
+          - targets:
+            - localhost:9100
+        - job_name: postgres_exporter
+          static_configs:
+          - targets:
+            - localhost:9113
+        - job_name: prometheus
+          static_configs:
+          - targets:
+            - localhost:9090
+        - job_name: pushgateway
+          static_configs:
+          - targets:
+            - localhost:9091
+        - job_name: rabbitmq
+          static_configs:
+          - targets:
+            - localhost:9125
+        - job_name: redis
+          static_configs:
+          - targets:
+            - localhost:9121
+        - job_name: statsd
+          static_configs:
+          - targets:
+            - localhost:9102
+  - name: pushgateway
+    release: prometheus
+  - name: rabbitmq_exporter
+    release: prometheus
+  - name: redis_exporter
+    release: prometheus
+  - name: cf_exporter
+    release: prometheus
+    properties:
+      cf_exporter:
+        cf:
+          api_url: https://api.run.haas-87.pez.pivotal.io
+          username: admin
+          password: "CuHeUh0b3mqBC9o1SPF8097i_sb4u1Ce"
+#          username: prometheus-cf
+#          password: "prometheus-client-secret"
+        skip_ssl_verify: true
+  - name: firehose_exporter
+    release: prometheus
+    properties:
+      firehose_exporter:
+        uaa:
+          url: https://uaa.run.haas-87.pez.pivotal.io
+          client_id: prometheus-firehose
+          client_secret: "prometheus-client-secret"
+        doppler:
+          url: wss://doppler.run.haas-87.pez.pivotal.io:443
+        subscription_id: prometheusPCF
+        skip_ssl_verify: true
+  - name: bosh_exporter
+    release: prometheus
+    properties:
+      bosh_exporter:
+        bosh:
+          url: https://10.193.156.31:25555
+          uaa:
+            client_id: prometheus-bosh
+            client_secret: prometheus-client-secret
+            url: https://10.193.156.31:8443
+          ca_cert: |
+            -----BEGIN CERTIFICATE-----
+            MIIC+zCCAeOgAwIBAgIBADANBgkqhkiG9w0BAQUFADAfMQswCQYDVQQGEwJVUzEQ
+            MA4GA1UECgwHUGl2b3RhbDAeFw0xNzAyMDIyMDU4MDJaFw0yMTAyMDMyMDU4MDJa
+            MB8xCzAJBgNVBAYTAlVTMRAwDgYDVQQKDAdQaXZvdGFsMIIBIjANBgkqhkiG9w0B
+            AQEFAAOCAQ8AMIIBCgKCAQEAw3k4G+1Vrw+Ue35FfVrLT4U0Q3k5Tk7+xul/f7Tf
+            hpqB23fbgAqux9Y6zEh5lAtqWuo6N0WhXjm0mojMsnd7F/QXpNZocA9gFfYI+5iK
+            GKLOU+1buVcRon+MQdXekkkFHry9uac+uZHEXkon0SbdkU/L7QeKwcR3I44M6Xa2
+            lSS8xV5J4hvGSwR66UGcuorYdgpHfPcfA/W5z4KnqzhlX1mtvatV76c8PIHA+Zv3
+            8CpQ3KZOIpFHfD+I9m7+ls9Fb4a7B1s+fghy7hQL3NsPdmpu5y5ahCrwJ0HKaIcu
+            hQi5ucoRUbG2j2clznRNVT8O66isnjjbEOO6F6UbAiayZQIDAQABo0IwQDAdBgNV
+            HQ4EFgQUW7cLlV0PN7wjM99gde4tElAubwUwDwYDVR0TAQH/BAUwAwEB/zAOBgNV
+            HQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQEFBQADggEBAE77bxPI/p1BvTNZQjJdOL9z
+            5+qtOWD/fM8neDjZiQ/Lzq1LSh8h3oHMhKZgGWcY/RbbzrerRtqc9F1goGL2oQkD
+            sWZeE5KcKm+UEMKNxuf/HXBCC1NTSjRBaPyxCI15iIH/GVc55qaETMY8NVmylXYw
+            bJiuk5A2Cl/DW13S5qJ3FiQF2AZUFNPu5V8qAcsf8B313u5mlejYwD9ZZLpk6vNx
+            +LvbtZWpnOosUl+b1ennS4IcL57E9Y6nSis5kDtRTgs49NgjQNOoUgR96Ok74BZ9
+            bvuiFrAb1SDh/xO49V1LQBfYkAjR9VVZE7wuTylUdK9samdkK9fl5V3nGhYuG8I=
+            -----END CERTIFICATE-----
+  - name: bosh_alerts
+    release: prometheus
+  - name: cloudfoundry_alerts
+    release: prometheus
+  - name: pcf_alerts
+    release: prometheus-pcf-alert
+update:
+  canaries: 1
+  max_in_flight: 1
+  serial: false
+  canary_watch_time: 1000-60000
+  update_watch_time: 1000-60000
+  
