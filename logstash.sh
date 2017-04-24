@@ -1,1 +1,0 @@
-sudo bin/logstash --path.settings=/etc/logstash/logstash.yml -e 'input { tcp { port => 5000 type => syslog } udp { port => 5000 type => syslog } } output { file {path=>"/home/tkaburagi/logstash.log"} }'
