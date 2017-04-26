@@ -1,9 +1,6 @@
 @SpringBootApplication
 @RestController
-public class ConfigServerHandsonApplication {
-	
-	private static final Logger logger = LoggerFactory.getLogger(ConfigServerHandsonApplication.class);
-	
+public class ConfigServerHandsonApplication {	
 	@Autowired
 	MyConfig myConfig;	
 	
