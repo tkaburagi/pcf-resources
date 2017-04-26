@@ -1,0 +1,11 @@
+---
+security:
+  basic:
+    enabled: false
+
+management:
+  security:
+    enabled: false
+
+myconfig:
+  greeting: hello from prop
