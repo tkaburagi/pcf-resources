@@ -10,14 +10,29 @@ import org.springframework.web.bind.annotation.RestController;
 
 @SpringBootApplication
 @RestController
-public class ConfigServerHandsonApplication {	
+public class ConfigServerHandsonApplication {
+	
+	
 	@Autowired
-	MyConfig myConfig;	
+	MyConfig myConfig;
+	
+	@Autowired
+	MyCloudConfig myCloudConfig;
+	
+	
 	
 	@RequestMapping("/fromprop")
 	public String fromEnv() {
+		logger.info("Called Logger");
 		return myConfig.getGreeting();
 	}
+	
+	@RequestMapping("/fromserver")
+	public String fromServer() {
+		logger.info("Called Logger");
+		return myCloudConfig.getGreeting();
+	}
+	
 	public static void main(String[] args) {
 		SpringApplication.run(ConfigServerHandsonApplication.class, args);
 	}
